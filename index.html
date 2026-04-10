@@ -1,23 +1,97 @@
 <!DOCTYPE html>
-<html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yubikey Passkey Demo</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f4f4f9; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        button { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; margin: 10px; font-size: 1rem; }
+        button:hover { background: #1d4ed8; }
+        input { padding: 10px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 10px; width: 80%; }
+        #status { margin-top: 20px; color: #374151; font-weight: bold; }
+    </style>
+</head>
 <body>
-    <h1>Yubikey Passkey Login</h1>
-    <button onclick="register()">Yubikey Kaydet (Passkey)</button>
 
-    <script>
-        async function register() {
-            // Sunucudan seçenekleri al
-            const response = await fetch('/generate-registration-options');
-            const options = await response.json();
+<div class="card">
+    <h1>🔑 Passkey Login</h1>
+    <input type="text" id="username" placeholder="Kullanıcı Adı" value="esatonbasi">
+    <br>
+    <button onclick="handleRegister()">Yeni Yubikey Kaydet</button>
+    <button onclick="handleLogin()">Yubikey ile Giriş Yap</button>
+    <div id="status"></div>
+</div>
 
-            // WebAuthn API'sini tetikle (Yubikey ışığı yanar!)
-            // Not: Base64 dönüşümleri gereklidir, bu basitleştirilmiş bir örnektir.
-            const credential = await navigator.credentials.create({
-                publicKey: options
+<script>
+    // --- YARDIMCI FONKSİYONLAR (Base64 <-> ArrayBuffer) ---
+    function bufferToBase64(buffer) {
+        return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    }
+
+    function base64ToBuffer(base64) {
+        const binary = atob(base64.replace(/-/g, '+').replace(/_/g, '/'));
+        return Uint8Array.from(binary, c => c.charCodeAt(0));
+    }
+
+    const statusEl = document.getElementById('status');
+
+    // --- KAYIT (REGISTRATION) ---
+    async function handleRegister() {
+        const username = document.getElementById('username').value;
+        statusEl.innerText = "Seçenekler alınıyor...";
+
+        try {
+            const res = await fetch(`/registration/options?username=${username}`);
+            const options = await res.json();
+
+            // Gelen veriyi tarayıcının anlayacağı Binary formata sokalım
+            options.challenge = base64ToBuffer(options.challenge);
+            options.user.id = base64ToBuffer(options.user.id);
+            if (options.excludeCredentials) {
+                options.excludeCredentials.forEach(c => c.id = base64ToBuffer(c.id));
+            }
+
+            statusEl.innerText = "Yubikey'e dokun!";
+            const credential = await navigator.credentials.create({ publicKey: options });
+
+            // Yanıtı sunucuya göndermek için tekrar Base64 yapalım
+            const credentialJSON = {
+                id: credential.id,
+                rawId: bufferToBase64(credential.rawId),
+                type: credential.type,
+                response: {
+                    attestationObject: bufferToBase64(credential.response.attestationObject),
+                    clientDataJSON: bufferToBase64(credential.response.clientDataJSON),
+                }
+            };
+
+            const verifyRes = await fetch(`/registration/verify?username=${username}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(credentialJSON)
             });
 
-            console.log("Yubikey yanıt verdi!", credential);
+            const result = await verifyRes.json();
+            statusEl.innerText = result.status === "ok" ? "✅ Kayıt Başarılı!" : "❌ Hata: " + result.detail;
+
+        } catch (err) {
+            console.error(err);
+            statusEl.innerText = "❌ Bir hata oluştu (Konsola bak).";
         }
-    </script>
+    }
+
+    // --- GİRİŞ (LOGIN) ---
+    async function handleLogin() {
+        const username = document.getElementById('username').value;
+        statusEl.innerText = "Giriş isteği gönderiliyor...";
+
+        // Not: Login endpoint'lerini henüz Backend'e eklemedik ama mantık aynıdır.
+        statusEl.innerText = "Login henüz backend'de hazır değil!";
+    }
+</script>
+
 </body>
 </html>
