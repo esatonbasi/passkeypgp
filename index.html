@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h1>Yubikey Passkey Login</h1>
+    <button onclick="register()">Yubikey Kaydet (Passkey)</button>
+
+    <script>
+        async function register() {
+            // Sunucudan seçenekleri al
+            const response = await fetch('/generate-registration-options');
+            const options = await response.json();
+
+            // WebAuthn API'sini tetikle (Yubikey ışığı yanar!)
+            // Not: Base64 dönüşümleri gereklidir, bu basitleştirilmiş bir örnektir.
+            const credential = await navigator.credentials.create({
+                publicKey: options
+            });
+
+            console.log("Yubikey yanıt verdi!", credential);
+        }
+    </script>
+</body>
+</html>
