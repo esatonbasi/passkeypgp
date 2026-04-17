@@ -1,140 +1,58 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Yubikey Passkey Demo</title>
+    <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.umd.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #f8fafc; margin: 0; }
-        .card { background: white; padding: 2.5rem; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center; width: 350px; border: 1px solid #e2e8f0; }
-        h1 { color: #0f172a; margin-bottom: 1.5rem; font-size: 1.5rem; }
-        button { width: 100%; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; margin: 8px 0; font-size: 14px; font-weight: 600; transition: all 0.2s; }
-        #regBtn { background: #2563eb; }
-        #regBtn:hover { background: #1d4ed8; }
-        #loginBtn { background: #64748b; }
-        #loginBtn:hover { background: #475569; }
-        input { padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 15px; width: 100%; box-sizing: border-box; outline: none; }
-        #status { margin-top: 20px; font-size: 14px; color: #64748b; min-height: 40px; }
-        .success { color: #16a34a !important; font-weight: bold; }
-        .error { color: #dc2626 !important; }
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f4f7f6; margin: 0; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 350px; text-align: center; }
+        input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; margin: 8px 0; font-weight: bold; transition: 0.2s; }
+        button:hover { opacity: 0.9; }
+        button.secondary { background: #10b981; }
     </style>
 </head>
 <body>
+    <div class="card">
+        <h2 style="margin-top:0;">🛡️ Yubikey Login</h2>
+        <input type="text" id="username" placeholder="Kullanıcı Adı">
+        <button onclick="register()">Yeni Kayıt</button>
+        <button onclick="login()" class="secondary">Giriş Yap</button>
+    </div>
 
-<div class="card">
-    <h1>🔑 Yubikey Login</h1>
-    <input type="text" id="username" placeholder="Kullanıcı adınızı yazın" value="esatonbasi">
-    
-    <button id="regBtn">1. Cihazı Yubikey'e Kaydet</button>
-    <button id="loginBtn">2. Giriş Yap ve Profile Git</button>
-    
-    <div id="status">Kullanıcı adını girerek başlayın.</div>
-</div>
+    <script>
+        const { startRegistration, startAuthentication } = SimpleWebAuthnBrowser;
 
-<script>
-    // --- UTILS ---
-    const bufferToBase64 = (buffer) => btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    const base64ToBuffer = (base64) => Uint8Array.from(atob(base64.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-
-    const statusEl = document.getElementById('status');
-    const setStatus = (msg, cls = '') => { statusEl.innerText = msg; statusEl.className = cls; };
-
-    // --- REGISTRATION ---
-    async function handleRegister() {
-        const username = document.getElementById('username').value.trim();
-        if (!username) return alert("Lütfen bir kullanıcı adı girin!");
-
-        try {
-            setStatus("Kayıt seçenekleri alınıyor...");
-            const res = await fetch(`/registration/options?username=${username}`);
-            const options = await res.json();
-
-            // Buffer dönüşümleri
-            options.challenge = base64ToBuffer(options.challenge);
-            options.user.id = base64ToBuffer(options.user.id);
-            if (options.excludeCredentials) options.excludeCredentials.forEach(c => c.id = base64ToBuffer(c.id));
-
-            setStatus("Yubikey ışığı yanıyor, dokunun!", "success");
-            const credential = await navigator.credentials.create({ publicKey: options });
-
-            const credentialJSON = {
-                id: credential.id,
-                rawId: bufferToBase64(credential.rawId),
-                type: credential.type,
-                response: {
-                    attestationObject: bufferToBase64(credential.response.attestationObject),
-                    clientDataJSON: bufferToBase64(credential.response.clientDataJSON),
-                }
-            };
-
-            const verifyRes = await fetch(`/registration/verify?username=${username}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(credentialJSON)
-            });
-
-            if (verifyRes.ok) setStatus("✅ Kayıt başarılı! Artık giriş yapabilirsiniz.", "success");
-            else setStatus("❌ Kayıt doğrulanamadı.", "error");
-
-        } catch (err) {
-            console.error(err);
-            setStatus("❌ İşlem iptal edildi: " + err.message, "error");
+        async function register() {
+            const user = document.getElementById('username').value;
+            if(!user) return alert("Kullanıcı adı girin");
+            try {
+                const res = await fetch(`/registration/options?username=${user}`);
+                const options = await res.json();
+                const attResp = await startRegistration(options);
+                await fetch(`/registration/verify?username=${user}`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(attResp)
+                });
+                alert("Kayıt Başarılı! Şimdi giriş yapabilirsiniz.");
+            } catch (e) { alert("Kayıt hatası: " + e); }
         }
-    }
 
-    // --- LOGIN ---
-    async function handleLogin() {
-        const username = document.getElementById('username').value.trim();
-        if (!username) return alert("Lütfen kullanıcı adınızı girin!");
-
-        try {
-            setStatus("Giriş seçenekleri alınıyor...");
-            const res = await fetch(`/login/options?username=${username}`);
-            if (!res.ok) throw new Error("Kullanıcı bulunamadı.");
-            const options = await res.json();
-
-            options.challenge = base64ToBuffer(options.challenge);
-            options.allowCredentials.forEach(c => c.id = base64ToBuffer(c.id));
-
-            setStatus("Yubikey'e dokunun (Giriş)...", "success");
-            const assertion = await navigator.credentials.get({ publicKey: options });
-
-            const assertionJSON = {
-                id: assertion.id,
-                rawId: bufferToBase64(assertion.rawId),
-                type: assertion.type,
-                response: {
-                    authenticatorData: bufferToBase64(assertion.response.authenticatorData),
-                    clientDataJSON: bufferToBase64(assertion.response.clientDataJSON),
-                    signature: bufferToBase64(assertion.response.signature),
-                    userHandle: assertion.response.userHandle ? bufferToBase64(assertion.response.userHandle) : null,
-                }
-            };
-
-            const verifyRes = await fetch(`/login/verify?username=${username}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(assertionJSON)
-            });
-
-            const result = await verifyRes.json();
-            if (verifyRes.ok && result.redirect) {
-                setStatus("🎉 Giriş başarılı! Yönlendiriliyorsunuz...", "success");
-                setTimeout(() => window.location.href = result.redirect, 800);
-            } else {
-                setStatus("❌ Giriş doğrulanamadı.", "error");
-            }
-
-        } catch (err) {
-            console.error(err);
-            setStatus("❌ Hata: " + err.message, "error");
+        async function login() {
+            const user = document.getElementById('username').value;
+            if(!user) return alert("Kullanıcı adı girin");
+            try {
+                const res = await fetch(`/login/options?username=${user}`);
+                const options = await res.json();
+                const asseResp = await startAuthentication(options);
+                const verifyRes = await fetch(`/login/verify?username=${user}`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(asseResp)
+                });
+                const result = await verifyRes.json();
+                if(result.redirect) window.location.href = result.redirect;
+            } catch (e) { alert("Giriş başarısız!"); }
         }
-    }
-
-    // Butonları bağla
-    document.getElementById('regBtn').addEventListener('click', handleRegister);
-    document.getElementById('loginBtn').addEventListener('click', handleLogin);
-</script>
-
+    </script>
 </body>
 </html>
